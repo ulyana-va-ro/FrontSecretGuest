@@ -1,0 +1,948 @@
+openapi: 3.0.3
+info:
+  title: Guest Service API
+  description: API для управления гостями, бронированиями, анкетами и отзывами
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:5000
+    description: Development server
+  - url: https://api.guest-service.com
+    description: Production server
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Проверка состояния сервиса
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Сервис работает корректно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  service:
+                    type: string
+                    example: guest-service
+
+  /auth/register:
+    post:
+      summary: Регистрация нового гостя
+      description: Создание нового аккаунта гостя
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestCreate'
+      responses:
+        '201':
+          description: Регистрация успешна
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  guest_id:
+                    type: integer
+                    example: 1
+                  message:
+                    type: string
+                    example: Регистрация успешна
+        '400':
+          description: Ошибка валидации или email уже зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      summary: Авторизация гостя
+      description: Упрощенная авторизация по email
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: guest@example.com
+      responses:
+        '200':
+          description: Успешная авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Guest'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Гость не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /profile/{guest_id}:
+    get:
+      summary: Получение профиля гостя
+      description: Получение информации о профиле активного гостя
+      tags:
+        - Profile
+      parameters:
+        - name: guest_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID гостя
+      responses:
+        '200':
+          description: Профиль найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Guest'
+        '404':
+          description: Гость не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Обновление профиля
+      description: Обновление информации профиля гостя
+      tags:
+        - Profile
+      parameters:
+        - name: guest_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                phone:
+                  type: string
+                is_vip:
+                  type: boolean
+      responses:
+        '200':
+          description: Профиль обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Guest'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Гость не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Удаление профиля
+      description: Мягкое удаление профиля (деактивация)
+      tags:
+        - Profile
+      parameters:
+        - name: guest_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Профиль удален
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Профиль удален
+        '404':
+          description: Гость не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bookings/{guest_id}/current:
+    get:
+      summary: Текущие бронирования
+      description: Получение текущих и будущих бронирований гостя
+      tags:
+        - Bookings
+      parameters:
+        - name: guest_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Список текущих бронирований
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  guest_id:
+                    type: integer
+                  total_bookings:
+                    type: integer
+                  bookings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BookingWithHotel'
+        '404':
+          description: Гость не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bookings/{guest_id}/history:
+    get:
+      summary: История бронирований
+      description: Получение истории завершенных бронирований гостя
+      tags:
+        - Bookings
+      parameters:
+        - name: guest_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: История бронирований
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  guest_id:
+                    type: integer
+                  total_bookings:
+                    type: integer
+                  bookings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BookingWithHotel'
+        '404':
+          description: Гость не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bookings/{guest_id}/create:
+    post:
+      summary: Создание бронирования
+      description: Создание нового бронирования для гостя
+      tags:
+        - Bookings
+      parameters:
+        - name: guest_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - hotel_id
+                - room_id
+                - check_in_date
+                - check_out_date
+              properties:
+                hotel_id:
+                  type: integer
+                room_id:
+                  type: integer
+                check_in_date:
+                  type: string
+                  format: date-time
+                check_out_date:
+                  type: string
+                  format: date-time
+                total_price:
+                  type: number
+                  format: float
+      responses:
+        '201':
+          description: Бронирование создано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  booking_id:
+                    type: integer
+                  message:
+                    type: string
+                    example: Бронирование создано
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Гость не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /secret-guest/{guest_id}/available-bookings:
+    get:
+      summary: Доступные для анкеты бронирования
+      description: Получение бронирований, доступных для заполнения анкеты тайного гостя
+      tags:
+        - Secret Guest
+      parameters:
+        - name: guest_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Список доступных бронирований
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available_bookings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        guest_id:
+                          type: integer
+                        hotel_id:
+                          type: integer
+                        room_id:
+                          type: integer
+                        check_in_date:
+                          type: string
+                          format: date-time
+                        check_out_date:
+                          type: string
+                          format: date-time
+                        status:
+                          type: string
+                        total_price:
+                          type: number
+                        can_fill_questionnaire:
+                          type: boolean
+        '404':
+          description: Гость не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /secret-guest/{guest_id}/bookings/{booking_id}/form:
+    get:
+      summary: Получение формы анкеты
+      description: Получение формы анкеты для тайного гостя
+      tags:
+        - Secret Guest
+      parameters:
+        - name: guest_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Форма анкеты
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  guest:
+                    $ref: '#/components/schemas/Guest'
+                  booking:
+                    $ref: '#/components/schemas/Booking'
+                  questions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Question'
+        '404':
+          description: Гость или бронирование не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /secret-guest/{guest_id}/bookings/{booking_id}/submit:
+    post:
+      summary: Отправка анкеты
+      description: Отправка заполненной анкеты тайного гостя
+      tags:
+        - Secret Guest
+      parameters:
+        - name: guest_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                booking_protection_reason:
+                  type: string
+                preferred_destinations:
+                  type: array
+                  items:
+                    type: string
+                usual_guests_count:
+                  type: integer
+                ready_for_evaluation:
+                  type: string
+                  enum: [Да, Нет]
+      responses:
+        '201':
+          description: Анкета отправлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Заявка отправлена. Мы свяжемся с Вами.
+                  questionnaire_id:
+                    type: integer
+        '400':
+          description: Ошибка валидации или анкета уже отправлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Гость или бронирование не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /secret-guest/{guest_id}/history:
+    get:
+      summary: История анкет
+      description: Получение истории отправленных анкет тайного гостя
+      tags:
+        - Secret Guest
+      parameters:
+        - name: guest_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: История анкет
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  questionnaires:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Questionnaire'
+                  total_count:
+                    type: integer
+        '404':
+          description: Гость не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{guest_id}/bookings/{booking_id}/form:
+    get:
+      summary: Получение формы отзыва
+      description: Получение формы для написания отзыва о бронировании
+      tags:
+        - Reviews
+      parameters:
+        - name: guest_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Форма отзыва
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  guest:
+                    $ref: '#/components/schemas/Guest'
+                  booking:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      guest_id:
+                        type: integer
+                      hotel_id:
+                        type: integer
+                      room_id:
+                        type: integer
+                      check_in_date:
+                        type: string
+                        format: date-time
+                      check_out_date:
+                        type: string
+                        format: date-time
+                      status:
+                        type: string
+                      total_price:
+                        type: number
+                      hotel_info:
+                        $ref: '#/components/schemas/HotelInfo'
+                  existing_review:
+                    $ref: '#/components/schemas/Review'
+                  form_structure:
+                    type: object
+        '404':
+          description: Гость или бронирование не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{guest_id}/bookings/{booking_id}/submit:
+    post:
+      summary: Отправка отзыва
+      description: Отправка заполненного отзыва о бронировании
+      tags:
+        - Reviews
+      parameters:
+        - name: guest_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - would_recommend
+                - overall_impression
+              properties:
+                would_recommend:
+                  type: boolean
+                overall_impression:
+                  type: string
+                positive_comment:
+                  type: string
+                negative_comment:
+                  type: string
+                improvement_suggestions:
+                  type: string
+      responses:
+        '201':
+          description: Отзыв отправлен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  review_id:
+                    type: integer
+                  message:
+                    type: string
+                    example: Отзыв успешно отправлен! Спасибо за ваше мнение.
+        '400':
+          description: Ошибка валидации или отзыв уже отправлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Гость или бронирование не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    GuestCreate:
+      type: object
+      required:
+        - email
+        - first_name
+        - last_name
+      properties:
+        email:
+          type: string
+          format: email
+          example: john.doe@example.com
+        first_name:
+          type: string
+          example: John
+        last_name:
+          type: string
+          example: Doe
+        phone:
+          type: string
+          example: "+1234567890"
+        is_vip:
+          type: boolean
+          example: false
+
+    Guest:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        email:
+          type: string
+          format: email
+          example: john.doe@example.com
+        first_name:
+          type: string
+          example: John
+        last_name:
+          type: string
+          example: Doe
+        phone:
+          type: string
+          example: "+1234567890"
+        is_vip:
+          type: boolean
+          example: false
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        guest_id:
+          type: integer
+          example: 1
+        hotel_id:
+          type: integer
+          example: 1
+        room_id:
+          type: integer
+          example: 101
+        check_in_date:
+          type: string
+          format: date-time
+        check_out_date:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [confirmed, active, completed, cancelled]
+          example: confirmed
+        total_price:
+          type: number
+          format: float
+          example: 150.50
+
+    BookingWithHotel:
+      allOf:
+        - $ref: '#/components/schemas/Booking'
+        - type: object
+          properties:
+            hotel_info:
+              $ref: '#/components/schemas/HotelInfo'
+
+    HotelInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Grand Hotel
+        city:
+          type: string
+          example: Moscow
+        address:
+          type: string
+          example: Tverskaya st. 1
+        needs_check:
+          type: boolean
+          example: false
+        quality_score:
+          type: number
+          format: float
+          example: 4.5
+        last_verified_at:
+          type: string
+          format: date-time
+        overall_score:
+          type: number
+          format: float
+          example: 4.5
+        cleanliness_score:
+          type: number
+          format: float
+          example: 4.7
+        service_score:
+          type: number
+          format: float
+          example: 4.3
+        amenities_score:
+          type: number
+          format: float
+          example: 4.2
+
+    Question:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        text:
+          type: string
+          example: Какая основная причина вашего бронирования
+        type:
+          type: string
+          enum: [single_choice, multiple_choice, number]
+          example: single_choice
+        options:
+          type: array
+          items:
+            type: string
+
+    Questionnaire:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        guest_id:
+          type: integer
+          example: 1
+        booking_id:
+          type: integer
+          example: 1
+        booking_protection_reason:
+          type: string
+        preferred_destinations:
+          type: array
+          items:
+            type: string
+        usual_guests_count:
+          type: integer
+          example: 2
+        ready_for_evaluation:
+          type: string
+          example: Да
+        submitted_at:
+          type: string
+          format: date-time
+
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        guest_id:
+          type: integer
+          example: 1
+        booking_id:
+          type: integer
+          example: 1
+        would_recommend:
+          type: boolean
+          example: true
+        overall_impression:
+          type: string
+          example: Отличный отель
+        positive_comment:
+          type: string
+          example: Чистые номера, вежливый персонал
+        negative_comment:
+          type: string
+          example: Шумно ночью
+        improvement_suggestions:
+          type: string
+          example: Улучшить звукоизоляцию
+        submitted_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Not found
+
+  responses:
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Неверный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+tags:
+  - name: Health
+    description: Проверка состояния сервиса
+  - name: Authentication
+    description: Регистрация и авторизация гостей
+  - name: Profile
+    description: Управление профилем гостя
+  - name: Bookings
+    description: Управление бронированиями
+  - name: Secret Guest
+    description: Анкеты тайного гостя
+  - name: Reviews
+    description: Отзывы о бронированиях

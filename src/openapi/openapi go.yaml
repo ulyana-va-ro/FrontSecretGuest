@@ -1,0 +1,740 @@
+openapi: 3.0.3
+info:
+  title: Hotel & Assignment Service - Secret Guest
+  version: "1.0.0"
+  description: >
+    Service for hotel matching, secret guest assignment management and hotel quality card updates.
+    Implements "Secret Guest" functionality for quality control of hotels on Ostrovok platform.
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Development server
+  - url: https://hotel-n-assignment.local/api/v1
+    description: Production server
+paths:
+  /matching/suggest:
+    post:
+      summary: Suggest hotels for secret guest
+      description: >
+        Hotel matching algorithm based on matching rules, 
+        priority is given to hotels requiring quality verification.
+      tags: [matching]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MatchingRequest'
+      responses:
+        '200':
+          description: List of ranked hotel offers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /assignments/offer:
+    post:
+      summary: Create assignment offer for a hotel and guest
+      description: >
+        Creates a new assignment offer for a secret guest to stay at a specific hotel.
+        The offer has a TTL and can be accepted or declined by the guest.
+      tags: [assignments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAssignmentOfferRequest'
+      responses:
+        '201':
+          description: Assignment offer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+        '400':
+          description: Bad request - invalid data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - assignment already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /assignments:
+    get:
+      summary: List assignments with filters
+      description: >
+        Retrieves a paginated list of assignments with optional filtering by guest, hotel, and state.
+      tags: [assignments]
+      parameters:
+        - in: query
+          name: guestId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: state
+          schema: { $ref: '#/components/schemas/AssignmentState' }
+        - in: query
+          name: hotelId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: List of assignments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentListResponse'
+        '400':
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /assignments/{id}/accept:
+    post:
+      summary: Accept an assignment offer
+      description: >
+        Accepts a pending assignment offer. The assignment state changes to ACCEPTED.
+        Can only be called on OFFERED assignments that haven't expired.
+      tags: [assignments]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+          description: Assignment ID
+      responses:
+        '200':
+          description: Assignment accepted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+        '400':
+          description: Bad request - invalid assignment ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - offer expired or invalid state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Assignment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /assignments/{id}/decline:
+    post:
+      summary: Decline an assignment offer
+      description: >
+        Declines a pending assignment offer. The assignment state changes to DECLINED.
+        Can only be called on OFFERED assignments.
+      tags: [assignments]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+          description: Assignment ID
+      responses:
+        '200':
+          description: Assignment declined successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+        '400':
+          description: Bad request - invalid assignment ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - invalid state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Assignment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /hotels/{id}:
+    get:
+      summary: Get hotel card with quality information
+      description: >
+        Retrieves a public hotel card with quality information including ratings,
+        verification status, and quality snapshots from secret guest reports.
+      tags: [hotels]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+          description: Hotel ID
+      responses:
+        '200':
+          description: Hotel card with quality information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HotelCard'
+        '404':
+          description: Hotel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # -------- Secret Guest (Personal Dashboard) ----------
+  /secret-guest/profile:
+    get:
+      summary: Get secret guest profile
+      description: >
+        Retrieves information about participation status, travel history,
+        and all necessary information for the secret guest.
+      tags: [secret-guest]
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+            format: bearer
+          description: Bearer token for authentication
+      responses:
+        '200':
+          description: Secret guest profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretGuestProfile'
+        '401':
+          description: Unauthorized - invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Secret guest profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /secret-guest/assignments:
+    get:
+      summary: Get secret guest assignment history
+      description: >
+        Retrieves the history of all assignments for the secret guest
+        with optional filtering by status.
+      tags: [secret-guest]
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+            format: bearer
+          description: Bearer token for authentication
+        - in: query
+          name: state
+          schema: { $ref: '#/components/schemas/AssignmentState' }
+          description: Filter by assignment state
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          description: Maximum number of assignments to return
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+          description: Number of assignments to skip
+      responses:
+        '200':
+          description: List of assignments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentListResponse'
+        '401':
+          description: Unauthorized - invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /secret-guest/apply:
+    post:
+      summary: Apply to join the secret guest program
+      description: >
+        Submits an application to join the "Secret Guest" program.
+        The guest specifies preferences for cities and dates.
+      tags: [secret-guest]
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+            format: bearer
+          description: Bearer token for authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretGuestApplication'
+      responses:
+        '201':
+          description: Application submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretGuestApplicationResponse'
+        '400':
+          description: Bad request - invalid application data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - application already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # -------- Internal (service-to-service) ----------
+  /internal/reports/ingest:
+    post:
+      summary: Ingest validated report summary from guest service
+      description: >
+        Idempotent operation. Recalculates quality aggregates and saves quality snapshot.
+        This endpoint is called by the guest service when a secret guest submits a quality report.
+      tags: [internal]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportSummaryIngest'
+      responses:
+        '202':
+          description: Report accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Report accepted for processing"
+        '400':
+          description: Bad request - invalid report data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # -------- Admin-only -----------------------------
+  /admin/hotels:
+    post:
+      summary: Create or update a hotel
+      description: >
+        Creates a new hotel or updates an existing one. Used by admin interface
+        for managing hotel data and quality verification requirements.
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpsertHotelRequest' }
+      responses:
+        '200':
+          description: Hotel created or updated successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Hotel' }
+        '400':
+          description: Bad request - invalid hotel data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/hotels/{id}/flag-check:
+    post:
+      summary: Mark hotel as needing secret guest check
+      description: >
+        Flags a hotel as requiring a secret guest quality check.
+        This will make the hotel available for assignment to secret guests.
+      tags: [admin]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+          description: Hotel ID
+      responses:
+        '200':
+          description: Hotel flagged for check successfully
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Hotel' }
+        '400':
+          description: Bad request - invalid hotel ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Hotel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/assignments:
+    get:
+      summary: Admin list of assignments
+      description: >
+        Retrieves a list of all assignments for administrative purposes.
+        Includes filtering by state and date range.
+      tags: [admin]
+      parameters:
+        - in: query
+          name: state
+          schema: { $ref: '#/components/schemas/AssignmentState' }
+          description: Filter by assignment state
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+          description: Filter assignments from this date
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+          description: Filter assignments to this date
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+          description: Maximum number of assignments to return
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+          description: Number of assignments to skip
+      responses:
+        '200':
+          description: List of assignments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentListResponse'
+        '400':
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    AssignmentState:
+      type: string
+      enum: [PENDING, OFFERED, ACCEPTED, STAYING, REPORTED, CLOSED, DECLINED, EXPIRED]
+    DateRange:
+      type: object
+      required: [checkin, checkout]
+      properties:
+        checkin: { type: string, format: date }
+        checkout: { type: string, format: date }
+    MatchingRequest:
+      type: object
+      required: [guestId, city, dates]
+      properties:
+        guestId: { type: string, format: uuid }
+        city: { type: string }
+        dates:
+          type: object
+          required: [checkin, checkout]
+          properties:
+            checkin: { type: string, format: date }
+            checkout: { type: string, format: date }
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 3
+    HotelOffer:
+      type: object
+      properties:
+        hotelId: { type: string, format: uuid }
+        name: { type: string }
+        city: { type: string }
+        score: { type: number, format: float }
+        offerTtlSeconds: { type: integer }
+    CreateAssignmentOfferRequest:
+      type: object
+      required: [guestId, hotelId, dates, offerTtlSeconds]
+      properties:
+        guestId: { type: string, format: uuid }
+        hotelId: { type: string, format: uuid }
+        dates:
+          type: object
+          required: [checkin, checkout]
+          properties:
+            checkin: { type: string, format: date }
+            checkout: { type: string, format: date }
+        offerTtlSeconds: { type: integer, minimum: 60, maximum: 604800 }
+    Assignment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        guestId: { type: string, format: uuid }
+        hotelId: { type: string, format: uuid }
+        hotelName: { type: string }
+        checkin: { type: string, format: date }
+        checkout: { type: string, format: date }
+        state: { $ref: '#/components/schemas/AssignmentState' }
+        offerExpiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AssignmentListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Assignment'
+        total:
+          type: integer
+          description: Total number of assignments matching the filters
+    ReportSummaryIngest:
+      type: object
+      required: [reportId, hotelId, overallScore]
+      properties:
+        reportId: { type: string, format: uuid, description: "Report ID from the guest service" }
+        hotelId: { type: string, format: uuid }
+        guestId: { type: string, format: uuid }
+        submittedAt: { type: string, format: date-time }
+        overallScore: { type: integer, minimum: 1, maximum: 5 }
+        cleanliness: { type: integer, minimum: 1, maximum: 5 }
+        service: { type: integer, minimum: 1, maximum: 5 }
+        amenities: { type: integer, minimum: 1, maximum: 5 }
+        comments: { type: string }
+        photosCount: { type: integer, minimum: 0 }
+    HotelCard:
+      type: object
+      properties:
+        hotel:
+          $ref: '#/components/schemas/Hotel'
+        quality:
+          $ref: '#/components/schemas/HotelQuality'
+    Hotel:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        city: { type: string }
+        address: { type: string }
+        needsCheck: { type: boolean }
+        qualityScore: { type: number, format: float, nullable: true }
+        lastVerifiedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    HotelQuality:
+      type: object
+      properties:
+        hotelId: { type: string, format: uuid }
+        score: { type: number, format: float, nullable: true }
+        lastVerifiedAt: { type: string, format: date-time, nullable: true }
+        snapshots:
+          type: array
+          items:
+            $ref: '#/components/schemas/QualitySnapshot'
+    QualitySnapshot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        reportId: { type: string, format: uuid }
+        overallScore: { type: integer }
+        cleanliness: { type: integer }
+        service: { type: integer }
+        amenities: { type: integer }
+        comments: { type: string }
+        appliedAt: { type: string, format: date-time }
+    UpsertHotelRequest:
+      type: object
+      required: [name, city]
+      properties:
+        id: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        city: { type: string }
+        address: { type: string }
+        needsCheck: { type: boolean, default: false }
+    
+    # -------- Новые схемы для секретного гостя ----------
+    SecretGuestProfile:
+      type: object
+      properties:
+        guestId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/SecretGuestStatus' }
+        rating: { type: number, format: float, minimum: 0, maximum: 5 }
+        completedAssignments: { type: integer, minimum: 0 }
+        totalSavings: { type: number, format: float, minimum: 0 }
+        badges: 
+          type: array
+          items: { $ref: '#/components/schemas/Badge' }
+        preferences:
+          $ref: '#/components/schemas/GuestPreferences'
+        createdAt: { type: string, format: date-time }
+        lastActivityAt: { type: string, format: date-time, nullable: true }
+    
+    SecretGuestStatus:
+      type: string
+      enum: [APPLIED, APPROVED, ACTIVE, SUSPENDED, REJECTED]
+      description: |
+        APPLIED - application submitted
+        APPROVED - application approved
+        ACTIVE - active participant
+        SUSPENDED - suspended
+        REJECTED - rejected
+    
+    Badge:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        icon: { type: string }
+        earnedAt: { type: string, format: date-time }
+    
+    GuestPreferences:
+      type: object
+      properties:
+        preferredCities: 
+          type: array
+          items: { type: string }
+        maxDistance: { type: integer, minimum: 1, maximum: 1000 }
+        budgetRange:
+          $ref: '#/components/schemas/BudgetRange'
+        amenities:
+          type: array
+          items: { type: string }
+    
+    BudgetRange:
+      type: object
+      properties:
+        min: { type: number, format: float, minimum: 0 }
+        max: { type: number, format: float, minimum: 0 }
+    
+    SecretGuestApplication:
+      type: object
+      required: [preferredCities, availableDates]
+      properties:
+        preferredCities: 
+          type: array
+          items: { type: string }
+          minItems: 1
+        availableDates:
+          type: array
+          items:
+            $ref: '#/components/schemas/DateRange'
+        budgetRange:
+          $ref: '#/components/schemas/BudgetRange'
+        experience: { type: string }
+        motivation: { type: string }
+        socialMedia: { type: string }
+    
+    SecretGuestApplicationResponse:
+      type: object
+      properties:
+        applicationId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/SecretGuestStatus' }
+        estimatedReviewTime: { type: string, format: date-time }
+        message: { type: string }
+    
+    MatchingResponse:
+      type: object
+      properties:
+        offers:
+          type: array
+          items:
+            $ref: '#/components/schemas/HotelOffer'
+        totalFound: { type: integer, minimum: 0 }
+        searchCriteria:
+          $ref: '#/components/schemas/SearchCriteria'
+    
+    SearchCriteria:
+      type: object
+      properties:
+        city: { type: string }
+        checkin: { type: string, format: date }
+        checkout: { type: string, format: date }
+        needsCheckOnly: { type: boolean }
+        minRating: { type: number, format: float, minimum: 1, maximum: 5 }
+    
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string }
+        message: { type: string }
+        code: { type: string }
+        details: { type: object }
+        timestamp: { type: string, format: date-time }
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []
